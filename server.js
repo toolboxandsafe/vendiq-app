@@ -110,8 +110,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'VendiQ API' });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`VendiQ API running on port ${PORT}`);
-  console.log(`Open http://localhost:${PORT} in your browser`);
-});
+// Export for Vercel serverless
+module.exports = app;
+
+// Local development
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`VendiQ API running on port ${PORT}`);
+    console.log(`Open http://localhost:${PORT} in your browser`);
+  });
+}
