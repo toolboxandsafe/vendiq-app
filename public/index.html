@@ -99,6 +99,7 @@
         
         .input-area {
             display: flex;
+            align-items: center;
             gap: 0.75rem;
             padding: 1rem 0;
             border-top: 1px solid rgba(255,255,255,0.1);
@@ -141,6 +142,17 @@
         button:disabled {
             background: #6c757d;
             cursor: not-allowed;
+        }
+        
+        #newChatBtn {
+            background: #6c757d !important;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        
+        #newChatBtn:hover {
+            background: #5c636a !important;
         }
         
         .typing {
@@ -216,6 +228,7 @@
         </div>
         
         <div class="input-area">
+            <button onclick="startNewChat()" id="newChatBtn" style="padding: 0.75rem 1rem; margin-right: 0.75rem; background: #6c757d; border-radius: 1rem;">🔄 New Chat</button>
             <input type="text" id="messageInput" placeholder="Describe your problem..." autocomplete="off">
             <button onclick="sendMessage()" id="sendBtn">Send</button>
         </div>
@@ -225,8 +238,17 @@
         const messagesDiv = document.getElementById('messages');
         const input = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
-        const sessionId = 'session_' + Date.now();
-        let welcomeRemoved = false;
+        
+        // Generate or retrieve persistent session ID
+        let sessionId = sessionStorage.getItem('vendiq_session_id');
+        if (!sessionId) {
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            sessionStorage.setItem('vendiq_session_id', sessionId);
+        }
+        
+        // Store conversation history in frontend
+        let conversationHistory = JSON.parse(sessionStorage.getItem('vendiq_conversation') || '[]');
+        let welcomeRemoved = conversationHistory.length > 0;
 
         input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -248,7 +270,50 @@
             }
         }
 
-        function addMessage(content, role) {
+        function restoreConversation() {
+            // Restore previous conversation if exists
+            if (conversationHistory.length > 0) {
+                removeWelcome();
+                conversationHistory.forEach(msg => {
+                    addMessage(msg.content, msg.role, false); // Don't save again
+                });
+            }
+        }
+
+        function startNewChat() {
+            // Clear conversation history
+            conversationHistory = [];
+            sessionStorage.removeItem('vendiq_conversation');
+            
+            // Generate new session ID
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            sessionStorage.setItem('vendiq_session_id', sessionId);
+            
+            // Clear messages and show welcome
+            messagesDiv.innerHTML = `
+                <div class="welcome">
+                    <h2>How can I help you today?</h2>
+                    <p>Describe your vending machine problem and I'll help troubleshoot.</p>
+                    <ul>
+                        <li onclick="sendSuggestion('My machine won\\'t vend anything')">My machine won't vend anything</li>
+                        <li onclick="sendSuggestion('The display says exact change and won\\'t take bills')">Display says "Exact Change", won't take bills</li>
+                        <li onclick="sendSuggestion('The bill acceptor keeps rejecting bills')">Bill acceptor keeps rejecting bills</li>
+                        <li onclick="sendSuggestion('How do I test vend a selection?')">How do I test vend a selection?</li>
+                    </ul>
+                </div>
+            `;
+            
+            welcomeRemoved = false;
+            
+            // Clear backend conversation
+            fetch('/api/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId })
+            }).catch(err => console.log('Clear request failed:', err));
+        }
+
+        function addMessage(content, role, saveToHistory = true) {
             removeWelcome();
             const div = document.createElement('div');
             div.className = `message ${role}`;
@@ -262,6 +327,13 @@
             div.innerHTML = formatted;
             messagesDiv.appendChild(div);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // Save to conversation history
+            if (saveToHistory) {
+                conversationHistory.push({ role, content });
+                sessionStorage.setItem('vendiq_conversation', JSON.stringify(conversationHistory));
+            }
+            
             return div;
         }
 
@@ -313,6 +385,12 @@
             sendBtn.disabled = false;
             input.focus();
         }
+
+        // Initialize conversation on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            restoreConversation();
+            input.focus();
+        });
     </script>
 </body>
 </html>
