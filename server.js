@@ -3,6 +3,7 @@ const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
+const ConversationLogger = require('./logger');
 require('dotenv').config();
 
 const app = express();
@@ -50,11 +51,16 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Initialize conversation logger
+const logger = new ConversationLogger();
+
 // Store conversation history per session (simple in-memory for now)
 const conversations = new Map();
 
 // Chat endpoint
 app.post('/api/chat', async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const { message, sessionId = 'default' } = req.body;
     
@@ -87,6 +93,18 @@ app.post('/api/chat', async (req, res) => {
     // Add assistant response to history
     history.push({ role: 'assistant', content: assistantMessage });
 
+    // Log the conversation
+    const responseTime = Date.now() - startTime;
+    const metadata = {
+      responseTime,
+      model: 'claude-sonnet-4-20250514',
+      tokens: response.usage ? (response.usage.input_tokens + response.usage.output_tokens) : null,
+      userAgent: req.headers['user-agent'],
+      ip: req.ip || req.connection.remoteAddress
+    };
+    
+    logger.log(sessionId, message, assistantMessage, metadata);
+
     res.json({ 
       response: assistantMessage,
       sessionId 
@@ -103,6 +121,23 @@ app.post('/api/clear', (req, res) => {
   const { sessionId = 'default' } = req.body;
   conversations.delete(sessionId);
   res.json({ success: true });
+});
+
+// Analytics endpoints
+app.get('/api/stats', (req, res) => {
+  const stats = logger.getStats();
+  res.json(stats);
+});
+
+app.get('/api/conversations', (req, res) => {
+  const limit = parseInt(req.query.limit) || 20;
+  const conversations = logger.getRecentConversations(limit);
+  res.json(conversations);
+});
+
+app.post('/api/clear-logs', (req, res) => {
+  const result = logger.clearLogs();
+  res.json(result);
 });
 
 // Health check
