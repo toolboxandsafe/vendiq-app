@@ -16,14 +16,14 @@ let bevmaxKB, gryphonKB, billKB, systemPrompt;
 try {
   // Try parent directory first (local development)
   const knowledgeDir = path.join(__dirname, '..');
-  bevmaxKB = fs.readFileSync(path.join(knowledgeDir, 'bevmax-5800-4-knowledge-base.md'), 'utf-8');
+  bevmaxKB = fs.readFileSync(path.join(knowledgeDir, 'bevmax-5800-4-comprehensive-knowledge-base.md'), 'utf-8');
   gryphonKB = fs.readFileSync(path.join(knowledgeDir, 'cpi-gryphon-knowledge-base.md'), 'utf-8');
   billKB = fs.readFileSync(path.join(knowledgeDir, 'cpi-bill-validator-knowledge-base.md'), 'utf-8');
   systemPrompt = fs.readFileSync(path.join(__dirname, 'system-prompt.md'), 'utf-8');
 } catch (e) {
   // Fall back to knowledge directory (for deployment)
   const knowledgeDir = path.join(__dirname, 'knowledge');
-  bevmaxKB = fs.readFileSync(path.join(knowledgeDir, 'bevmax-5800-4-knowledge-base.md'), 'utf-8');
+  bevmaxKB = fs.readFileSync(path.join(knowledgeDir, 'bevmax-5800-4-comprehensive-knowledge-base.md'), 'utf-8');
   gryphonKB = fs.readFileSync(path.join(knowledgeDir, 'cpi-gryphon-knowledge-base.md'), 'utf-8');
   billKB = fs.readFileSync(path.join(knowledgeDir, 'cpi-bill-validator-knowledge-base.md'), 'utf-8');
   systemPrompt = fs.readFileSync(path.join(__dirname, 'system-prompt.md'), 'utf-8');
