@@ -3,6 +3,7 @@ const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
+const SupabaseLogger = require('./supabase-logger');
 require('dotenv').config();
 
 const app = express();
@@ -50,11 +51,16 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Initialize Supabase logger
+const logger = new SupabaseLogger();
+
 // Store conversation history per session (simple in-memory for now)
 const conversations = new Map();
 
 // Chat endpoint
 app.post('/api/chat', async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const { message, sessionId = 'default' } = req.body;
     
@@ -87,6 +93,19 @@ app.post('/api/chat', async (req, res) => {
     // Add assistant response to history
     history.push({ role: 'assistant', content: assistantMessage });
 
+    // Log the conversation (async, don't wait for it)
+    const responseTime = Date.now() - startTime;
+    const metadata = {
+      responseTime,
+      model: 'claude-sonnet-4-20250514',
+      tokens: response.usage ? (response.usage.input_tokens + response.usage.output_tokens) : null,
+      userAgent: req.headers['user-agent'],
+      ip: req.ip || req.connection.remoteAddress
+    };
+    
+    logger.log(sessionId, message, assistantMessage, metadata)
+      .catch(err => console.error('Logging failed:', err));
+
     res.json({ 
       response: assistantMessage,
       sessionId 
@@ -103,6 +122,38 @@ app.post('/api/clear', (req, res) => {
   const { sessionId = 'default' } = req.body;
   conversations.delete(sessionId);
   res.json({ success: true });
+});
+
+// Analytics endpoints
+app.get('/api/stats', async (req, res) => {
+  try {
+    const stats = await logger.getStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Failed to get stats:', error);
+    res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
+app.get('/api/conversations', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const conversations = await logger.getRecentConversations(limit);
+    res.json(conversations);
+  } catch (error) {
+    console.error('Failed to get conversations:', error);
+    res.status(500).json({ error: 'Failed to get conversations' });
+  }
+});
+
+app.post('/api/clear-logs', async (req, res) => {
+  try {
+    const result = await logger.clearLogs();
+    res.json(result);
+  } catch (error) {
+    console.error('Failed to clear logs:', error);
+    res.status(500).json({ error: 'Failed to clear logs' });
+  }
 });
 
 // Health check

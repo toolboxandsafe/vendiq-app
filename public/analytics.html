@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VendiQ Analytics</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        header {
+            background: #0d6efd;
+            color: white;
+            padding: 1rem 2rem;
+            margin-bottom: 2rem;
+            border-radius: 8px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #0d6efd;
+            display: block;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+        
+        .problems-chart {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .problem-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .problem-label {
+            min-width: 120px;
+            font-weight: 500;
+        }
+        
+        .problem-progress {
+            flex: 1;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            margin: 0 1rem;
+            overflow: hidden;
+        }
+        
+        .problem-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0d6efd, #6610f2);
+            transition: width 0.3s ease;
+        }
+        
+        .problem-count {
+            min-width: 30px;
+            text-align: right;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        
+        .conversations-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .conversation {
+            border-bottom: 1px solid #eee;
+            padding: 1rem 0;
+        }
+        
+        .conversation:last-child {
+            border-bottom: none;
+        }
+        
+        .conversation-header {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+        
+        .conversation-q {
+            background: #e3f2fd;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .conversation-a {
+            background: #f3e5f5;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .btn {
+            background: #0d6efd;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        
+        .btn:hover {
+            background: #0b5ed7;
+        }
+        
+        .btn.secondary {
+            background: #6c757d;
+        }
+        
+        .btn.secondary:hover {
+            background: #5c636a;
+        }
+        
+        .error {
+            color: #dc3545;
+            padding: 1rem;
+            background: #f8d7da;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+        
+        .setup-notice {
+            background: #fff3cd;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔧 VendiQ Analytics</h1>
+            <p>Conversation logs and usage statistics</p>
+        </header>
+        
+        <div id="setup-notice" class="setup-notice">
+            <strong>Setup Required:</strong> Configure Supabase database to enable analytics. 
+            <a href="#setup-instructions" onclick="showSetupInstructions()">Click here for setup instructions.</a>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="loadData()">🔄 Refresh Data</button>
+            <button class="btn secondary" onclick="clearLogs()">🗑️ Clear All Logs</button>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">Loading analytics...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div id="stats-section" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-number" id="total-conversations">0</span>
+                    <div class="stat-label">Total Conversations</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" id="unique-sessions">0</span>
+                    <div class="stat-label">Unique Sessions</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" id="avg-per-session">0</span>
+                    <div class="stat-label">Avg per Session</div>
+                </div>
+            </div>
+            
+            <div class="problems-chart">
+                <h3>Problem Breakdown</h3>
+                <div id="problems-list"></div>
+            </div>
+            
+            <div class="conversations-section">
+                <h3>Recent Conversations</h3>
+                <div id="conversations-list"></div>
+            </div>
+        </div>
+
+        <div id="setup-instructions" style="display: none;">
+            <div style="background: white; padding: 2rem; border-radius: 8px; margin-top: 2rem;">
+                <h3>Supabase Setup Instructions</h3>
+                <ol style="margin: 1rem 0; padding-left: 2rem;">
+                    <li>Go to <a href="https://supabase.com" target="_blank">supabase.com</a> and create a free account</li>
+                    <li>Create a new project</li>
+                    <li>Go to SQL Editor and run this query:
+                        <pre style="background: #f8f9fa; padding: 1rem; margin: 1rem 0; border-radius: 4px;">
+CREATE TABLE conversations (
+  id SERIAL PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  user_message TEXT NOT NULL,
+  assistant_response TEXT NOT NULL,
+  response_time INTEGER,
+  model TEXT,
+  tokens_used INTEGER,
+  user_agent TEXT,
+  ip_address TEXT,
+  timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);</pre>
+                    </li>
+                    <li>Go to Settings > API to get your URL and anon key</li>
+                    <li>In Vercel, add these environment variables:
+                        <ul style="margin: 0.5rem 0; padding-left: 2rem;">
+                            <li><code>SUPABASE_URL=your_project_url</code></li>
+                            <li><code>SUPABASE_ANON_KEY=your_anon_key</code></li>
+                        </ul>
+                    </li>
+                    <li>Redeploy your Vercel app</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadData() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const statsSection = document.getElementById('stats-section');
+            const setupNotice = document.getElementById('setup-notice');
+            
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            statsSection.style.display = 'none';
+            
+            try {
+                const [statsResponse, conversationsResponse] = await Promise.all([
+                    fetch('/api/stats'),
+                    fetch('/api/conversations?limit=10')
+                ]);
+                
+                const stats = await statsResponse.json();
+                const conversations = await conversationsResponse.json();
+                
+                if (stats.error) {
+                    throw new Error('Database not configured. Please follow setup instructions.');
+                }
+                
+                displayStats(stats);
+                displayConversations(conversations);
+                
+                loading.style.display = 'none';
+                statsSection.style.display = 'block';
+                setupNotice.style.display = 'none';
+                
+            } catch (err) {
+                loading.style.display = 'none';
+                error.textContent = err.message;
+                error.style.display = 'block';
+                setupNotice.style.display = 'block';
+            }
+        }
+        
+        function displayStats(stats) {
+            document.getElementById('total-conversations').textContent = stats.totalConversations || 0;
+            document.getElementById('unique-sessions').textContent = stats.uniqueSessions || 0;
+            
+            const avgPerSession = stats.totalConversations && stats.uniqueSessions 
+                ? Math.round(stats.totalConversations / stats.uniqueSessions * 10) / 10
+                : 0;
+            document.getElementById('avg-per-session').textContent = avgPerSession;
+            
+            const problemsList = document.getElementById('problems-list');
+            problemsList.innerHTML = '';
+            
+            if (stats.problemBreakdown) {
+                const problems = Object.entries(stats.problemBreakdown);
+                const maxCount = Math.max(...problems.map(([, count]) => count));
+                
+                problems.sort((a, b) => b[1] - a[1]).forEach(([problem, count]) => {
+                    const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                    
+                    const problemBar = document.createElement('div');
+                    problemBar.className = 'problem-bar';
+                    problemBar.innerHTML = `
+                        <div class="problem-label">${problem}</div>
+                        <div class="problem-progress">
+                            <div class="problem-fill" style="width: ${percentage}%"></div>
+                        </div>
+                        <div class="problem-count">${count}</div>
+                    `;
+                    problemsList.appendChild(problemBar);
+                });
+            } else {
+                problemsList.innerHTML = '<p>No data available yet.</p>';
+            }
+        }
+        
+        function displayConversations(conversations) {
+            const conversationsList = document.getElementById('conversations-list');
+            conversationsList.innerHTML = '';
+            
+            conversations.forEach(conv => {
+                const conversationDiv = document.createElement('div');
+                conversationDiv.className = 'conversation';
+                
+                const date = new Date(conv.timestamp).toLocaleString();
+                const sessionShort = conv.session_id ? conv.session_id.substring(0, 8) : 'unknown';
+                
+                conversationDiv.innerHTML = `
+                    <div class="conversation-header">
+                        ${date} • Session: ${sessionShort} • Response: ${conv.response_time || 'N/A'}ms
+                    </div>
+                    <div class="conversation-q">
+                        <strong>Question:</strong> ${conv.user_message}
+                    </div>
+                    <div class="conversation-a">
+                        <strong>Answer:</strong> ${conv.assistant_response.substring(0, 200)}${conv.assistant_response.length > 200 ? '...' : ''}
+                    </div>
+                `;
+                conversationsList.appendChild(conversationDiv);
+            });
+            
+            if (conversations.length === 0) {
+                conversationsList.innerHTML = '<p>No conversations logged yet.</p>';
+            }
+        }
+        
+        function showSetupInstructions() {
+            const instructions = document.getElementById('setup-instructions');
+            instructions.style.display = instructions.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        async function clearLogs() {
+            if (!confirm('Are you sure you want to clear all conversation logs? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/clear-logs', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('All logs cleared successfully.');
+                    loadData();
+                } else {
+                    alert('Failed to clear logs: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Failed to clear logs: ' + error.message);
+            }
+        }
+        
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html>
