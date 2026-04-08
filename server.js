@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
@@ -14,8 +15,26 @@ app.use(cors({
     'http://localhost:5173',
   ],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static('public'));
+
+// Rate limiting - 20 chat requests per minute per IP
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'Too many requests. Please wait a moment and try again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Stricter limit for destructive endpoints - 5 per hour
+const destructiveLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { error: 'Rate limit exceeded. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Load knowledge bases
 let bevmaxKB, gryphonKB, billKB, systemPrompt;
@@ -64,7 +83,7 @@ const logger = new SupabaseLogger();
 const conversations = new Map();
 
 // Chat endpoint
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', chatLimiter, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -152,7 +171,7 @@ app.get('/api/conversations', async (req, res) => {
   }
 });
 
-app.post('/api/clear-logs', async (req, res) => {
+app.post('/api/clear-logs', destructiveLimiter, async (req, res) => {
   try {
     const result = await logger.clearLogs();
     res.json(result);
