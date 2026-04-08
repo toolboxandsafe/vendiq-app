@@ -36,23 +36,32 @@ const destructiveLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Load knowledge bases
+// Load knowledge bases safely (#5 - knowledge base loading can crash)
+function loadFile(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    console.warn(`Warning: Could not load ${filePath}`);
+    return '';
+  }
+}
+
 let bevmaxKB, gryphonKB, billKB, systemPrompt;
 
-try {
-  // Try parent directory first (local development)
-  const knowledgeDir = path.join(__dirname, '..');
-  bevmaxKB = fs.readFileSync(path.join(knowledgeDir, 'bevmax-5800-4-complete-database.md'), 'utf-8');
-  gryphonKB = fs.readFileSync(path.join(knowledgeDir, 'cpi-gryphon-knowledge-base.md'), 'utf-8');
-  billKB = fs.readFileSync(path.join(knowledgeDir, 'cpi-bill-validator-knowledge-base.md'), 'utf-8');
-  systemPrompt = fs.readFileSync(path.join(__dirname, 'system-prompt.md'), 'utf-8');
-} catch (e) {
-  // Fall back to knowledge directory (for deployment)
-  const knowledgeDir = path.join(__dirname, 'knowledge');
-  bevmaxKB = fs.readFileSync(path.join(knowledgeDir, 'bevmax-5800-4-complete-database.md'), 'utf-8');
-  gryphonKB = fs.readFileSync(path.join(knowledgeDir, 'cpi-gryphon-knowledge-base.md'), 'utf-8');
-  billKB = fs.readFileSync(path.join(knowledgeDir, 'cpi-bill-validator-knowledge-base.md'), 'utf-8');
-  systemPrompt = fs.readFileSync(path.join(__dirname, 'system-prompt.md'), 'utf-8');
+// Try parent directory first (local development), then knowledge/ subdirectory
+const parentDir = path.join(__dirname, '..');
+const knowledgeDir = path.join(__dirname, 'knowledge');
+
+bevmaxKB = loadFile(path.join(parentDir, 'bevmax-5800-4-complete-database.md'))
+  || loadFile(path.join(knowledgeDir, 'bevmax-5800-4-complete-database.md'));
+gryphonKB = loadFile(path.join(parentDir, 'cpi-gryphon-knowledge-base.md'))
+  || loadFile(path.join(knowledgeDir, 'cpi-gryphon-knowledge-base.md'));
+billKB = loadFile(path.join(parentDir, 'cpi-bill-validator-knowledge-base.md'))
+  || loadFile(path.join(knowledgeDir, 'cpi-bill-validator-knowledge-base.md'));
+systemPrompt = loadFile(path.join(__dirname, 'system-prompt.md'));
+
+if (!bevmaxKB && !gryphonKB && !billKB) {
+  console.error('ERROR: No knowledge base files found. The assistant will have no troubleshooting data.');
 }
 
 // Combine into full system context
@@ -79,29 +88,42 @@ const anthropic = new Anthropic({
 // Initialize Supabase logger
 const logger = new SupabaseLogger();
 
-// Store conversation history per session (simple in-memory for now)
+// Store conversation history per session (#8 - bounded Map with eviction)
+const MAX_SESSIONS = 500;
 const conversations = new Map();
+
+function getOrCreateHistory(sessionId) {
+  // Evict oldest sessions if at capacity
+  if (!conversations.has(sessionId) && conversations.size >= MAX_SESSIONS) {
+    const oldest = conversations.keys().next().value;
+    conversations.delete(oldest);
+  }
+  if (!conversations.has(sessionId)) {
+    conversations.set(sessionId, []);
+  }
+  return conversations.get(sessionId);
+}
 
 // Chat endpoint
 app.post('/api/chat', chatLimiter, async (req, res) => {
   const startTime = Date.now();
-  
+
   try {
     const { message, sessionId = 'default' } = req.body;
-    
-    if (!message) {
+
+    // #6 - validate input length
+    if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Message is required' });
     }
-
-    // Get or create conversation history
-    if (!conversations.has(sessionId)) {
-      conversations.set(sessionId, []);
+    if (message.length > 2000) {
+      return res.status(400).json({ error: 'Message too long. Please keep it under 2000 characters.' });
     }
-    const history = conversations.get(sessionId);
-    
+
+    const history = getOrCreateHistory(sessionId);
+
     // Add user message to history
     history.push({ role: 'user', content: message });
-    
+
     // Keep only last 10 messages to manage context
     const recentHistory = history.slice(-10);
 
@@ -113,8 +135,13 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       messages: recentHistory,
     });
 
-    const assistantMessage = response.content[0].text;
-    
+    // #4 - validate API response before accessing
+    const assistantMessage = response?.content?.[0]?.text;
+    if (!assistantMessage) {
+      console.error('Unexpected API response format:', JSON.stringify(response?.content));
+      return res.status(500).json({ error: 'Received an unexpected response. Please try again.' });
+    }
+
     // Add assistant response to history
     history.push({ role: 'assistant', content: assistantMessage });
 
@@ -127,13 +154,13 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       userAgent: req.headers['user-agent'],
       ip: req.ip || req.connection.remoteAddress
     };
-    
+
     logger.log(sessionId, message, assistantMessage, metadata)
       .catch(err => console.error('Logging failed:', err));
 
-    res.json({ 
+    res.json({
       response: assistantMessage,
-      sessionId 
+      sessionId
     });
 
   } catch (error) {
@@ -162,7 +189,8 @@ app.get('/api/stats', async (req, res) => {
 
 app.get('/api/conversations', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 20;
+    // #7 - clamp limit to 1-100
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
     const conversations = await logger.getRecentConversations(limit);
     res.json(conversations);
   } catch (error) {
