@@ -313,17 +313,23 @@
             }).catch(err => console.log('Clear request failed:', err));
         }
 
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         function addMessage(content, role, saveToHistory = true) {
             removeWelcome();
             const div = document.createElement('div');
             div.className = `message ${role}`;
-            
-            // Simple markdown-like formatting
-            let formatted = content
+
+            // Escape HTML first, then apply safe markdown-like formatting
+            let formatted = escapeHTML(content)
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                 .replace(/\n/g, '<br>')
                 .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-            
+
             div.innerHTML = formatted;
             messagesDiv.appendChild(div);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;

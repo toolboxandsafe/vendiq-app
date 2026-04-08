@@ -320,24 +320,30 @@ CREATE TABLE conversations (
                 : 0;
             document.getElementById('avg-per-session').textContent = avgPerSession;
             
+            function escapeHTML(str) {
+                const el = document.createElement('div');
+                el.textContent = str;
+                return el.innerHTML;
+            }
+
             const problemsList = document.getElementById('problems-list');
             problemsList.innerHTML = '';
-            
+
             if (stats.problemBreakdown) {
                 const problems = Object.entries(stats.problemBreakdown);
                 const maxCount = Math.max(...problems.map(([, count]) => count));
-                
+
                 problems.sort((a, b) => b[1] - a[1]).forEach(([problem, count]) => {
                     const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
-                    
+
                     const problemBar = document.createElement('div');
                     problemBar.className = 'problem-bar';
                     problemBar.innerHTML = `
-                        <div class="problem-label">${problem}</div>
+                        <div class="problem-label">${escapeHTML(problem)}</div>
                         <div class="problem-progress">
                             <div class="problem-fill" style="width: ${percentage}%"></div>
                         </div>
-                        <div class="problem-count">${count}</div>
+                        <div class="problem-count">${parseInt(count)}</div>
                     `;
                     problemsList.appendChild(problemBar);
                 });
@@ -345,27 +351,33 @@ CREATE TABLE conversations (
                 problemsList.innerHTML = '<p>No data available yet.</p>';
             }
         }
-        
+
         function displayConversations(conversations) {
             const conversationsList = document.getElementById('conversations-list');
             conversationsList.innerHTML = '';
-            
+
+            function escapeHTML(str) {
+                const el = document.createElement('div');
+                el.textContent = str;
+                return el.innerHTML;
+            }
+
             conversations.forEach(conv => {
                 const conversationDiv = document.createElement('div');
                 conversationDiv.className = 'conversation';
-                
+
                 const date = new Date(conv.timestamp).toLocaleString();
-                const sessionShort = conv.session_id ? conv.session_id.substring(0, 8) : 'unknown';
-                
+                const sessionShort = conv.session_id ? escapeHTML(conv.session_id.substring(0, 8)) : 'unknown';
+
                 conversationDiv.innerHTML = `
                     <div class="conversation-header">
-                        ${date} • Session: ${sessionShort} • Response: ${conv.response_time || 'N/A'}ms
+                        ${escapeHTML(date)} • Session: ${sessionShort} • Response: ${parseInt(conv.response_time) || 'N/A'}ms
                     </div>
                     <div class="conversation-q">
-                        <strong>Question:</strong> ${conv.user_message}
+                        <strong>Question:</strong> ${escapeHTML(conv.user_message)}
                     </div>
                     <div class="conversation-a">
-                        <strong>Answer:</strong> ${conv.assistant_response.substring(0, 200)}${conv.assistant_response.length > 200 ? '...' : ''}
+                        <strong>Answer:</strong> ${escapeHTML(conv.assistant_response.substring(0, 200))}${conv.assistant_response.length > 200 ? '...' : ''}
                     </div>
                 `;
                 conversationsList.appendChild(conversationDiv);
