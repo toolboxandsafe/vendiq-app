@@ -373,10 +373,17 @@
             addTypingIndicator();
 
             try {
+                // #10 - Send conversation history so backend can restore context after cold start
+                const payload = { message, sessionId };
+                if (conversationHistory.length > 1) {
+                    // Send prior history (excluding the message we just added) so backend can rebuild context
+                    payload.history = conversationHistory.slice(0, -1).slice(-9);
+                }
+
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message, sessionId })
+                    body: JSON.stringify(payload)
                 });
 
                 removeTypingIndicator();

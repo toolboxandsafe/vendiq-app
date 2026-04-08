@@ -16,6 +16,15 @@ app.use(cors({
   ],
 }));
 app.use(express.json({ limit: '1mb' }));
+
+// #9 - Content Security Policy
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
+  );
+  next();
+});
+
 app.use(express.static('public'));
 
 // Rate limiting - 20 chat requests per minute per IP
@@ -85,6 +94,9 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// #11 - Model version from env var
+const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+
 // Initialize Supabase logger
 const logger = new SupabaseLogger();
 
@@ -109,7 +121,7 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
   const startTime = Date.now();
 
   try {
-    const { message, sessionId = 'default' } = req.body;
+    const { message, sessionId = 'default', history: clientHistory } = req.body;
 
     // #6 - validate input length
     if (!message || typeof message !== 'string') {
@@ -121,6 +133,16 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
 
     const history = getOrCreateHistory(sessionId);
 
+    // #10 - Restore context from client if backend lost it (cold start)
+    if (history.length === 0 && Array.isArray(clientHistory) && clientHistory.length > 0) {
+      const validRoles = new Set(['user', 'assistant']);
+      for (const msg of clientHistory.slice(-9)) {
+        if (msg && validRoles.has(msg.role) && typeof msg.content === 'string') {
+          history.push({ role: msg.role, content: msg.content.slice(0, 2000) });
+        }
+      }
+    }
+
     // Add user message to history
     history.push({ role: 'user', content: message });
 
@@ -129,7 +151,7 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
 
     // Call Claude
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL,
       max_tokens: 1024,
       system: fullSystemPrompt,
       messages: recentHistory,
@@ -149,7 +171,7 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
     const responseTime = Date.now() - startTime;
     const metadata = {
       responseTime,
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL,
       tokens: response.usage ? (response.usage.input_tokens + response.usage.output_tokens) : null,
       userAgent: req.headers['user-agent'],
       ip: req.ip || req.connection.remoteAddress
@@ -165,6 +187,16 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
 
   } catch (error) {
     console.error('Error:', error);
+
+    // #12 - Log errors to database for tracking
+    const { message: userMsg, sessionId: sid } = req.body || {};
+    logger.logError(sid, userMsg, error.message || String(error), {
+      responseTime: Date.now() - startTime,
+      model: MODEL,
+      userAgent: req.headers['user-agent'],
+      ip: req.ip || req.connection.remoteAddress,
+    }).catch(() => {});
+
     res.status(500).json({ error: 'Failed to get response' });
   }
 });

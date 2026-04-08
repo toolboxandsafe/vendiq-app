@@ -109,6 +109,28 @@ class SupabaseLogger {
         }
     }
 
+    async logError(sessionId, userMessage, errorMessage, metadata = {}) {
+        try {
+            const logEntry = {
+                session_id: sessionId || 'unknown',
+                user_message: userMessage || '',
+                assistant_response: `[ERROR] ${errorMessage}`,
+                response_time: metadata.responseTime || null,
+                model: metadata.model || null,
+                tokens_used: null,
+                user_agent: metadata.userAgent || null,
+                ip_address: metadata.ip || null,
+                timestamp: new Date().toISOString()
+            };
+
+            await this.supabase
+                .from('conversations')
+                .insert([logEntry]);
+        } catch (err) {
+            console.error('Failed to log error to Supabase:', err);
+        }
+    }
+
     async clearLogs() {
         try {
             const { error } = await this.supabase
